@@ -1,0 +1,38 @@
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# User & Generated Media Data
+sample/
+issues/
+*.wav
+*.mp4
+*.mkv
+*.avi
+*.png
+*.jpg
+*.jpeg
+
+# Output artifacts
+issues.zip
+lqa_issues.json
+lqa_issues.csv
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
