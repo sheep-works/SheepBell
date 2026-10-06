@@ -1,119 +1,121 @@
-# SheepBell - ゲームLQA用 自動動画クリップ & 文字起こしツール
+[English](README.md) | [日本語](README_ja.md) | [简体中文](README_zh.md)
 
-OBS等で録画されたゲームプレイ動画の特定マイク音声トラックから「テスターの発話区間」を自動検知し、**全音声トラック保持動画クリップ・開始0.1秒スナップショット画像・Faster-Whisper文字起こし・CSV/JSON構造化データ**を自動生成するツールです。
+# SheepBell - Automatic Video Clipping & Transcription Tool for Game LQA
 
-## 🌟 主な機能
-- **4ステップ疎結合設計**:
-  - **Step 1 (マイク音声抽出)**: FFmpegを用いて指定トラックから16kHzモノラルWAVを高速抽出
-  - **Step 2 (発話区間検出)**: PyTorch Silero VADにより高精度に発話タイムスタンプを検出
-  - **Step 3 (マージ & 文字起こし & 出力)**:
-    - 無音許容時間・前後マージンを考慮して発話を統合
-    - **Faster-Whisper**（ローカル実行 / APIキー不要）により各区間の発話を自動テキスト化（日・英・中・自動検出）
-    - `lqa_issues.json` および **Excel/Googleスプレッドシート互換の `lqa_issues.csv` (UTF-8 BOM)** を同時出力
-  - **Step 4 (全トラック保持クリップ & 静止画生成)**:
-    - FFmpeg `-map 0 -c copy` により、ゲーム音・マイク音など**全音声トラックを保持したまま再エンコードなしで数秒で切り出し**
-    - 各Issueの開始+0.1秒のスナップショット画像（`issue_001.png`）を自動生成
-- **直感的なWeb UI (Gradio)**:
-  - ファイル名Prefix（例: `stage1`, `bug`）や開始ID番号（例: `10`）を指定可能
-  - パラメータ調整、ステップ個別実行、リアルタイム実行ログ表示
+An automated tool that detects the "tester's speech segments" from a specific microphone audio track in game play videos recorded with tools like OBS. It automatically generates **video clips preserving all audio tracks, snapshot images at the first 0.1s, transcripts using Faster-Whisper, and structured data in CSV/JSON format**.
+
+## 🌟 Key Features
+- **4-Step Loosely Coupled Design**:
+  - **Step 1 (Microphone Audio Extraction)**: High-speed extraction of a 16kHz mono WAV from the specified track using FFmpeg.
+  - **Step 2 (Voice Activity Detection)**: High-accuracy detection of speech timestamps using PyTorch Silero VAD.
+  - **Step 3 (Merging, Transcription & Output)**:
+    - Merges speech segments considering allowable silence duration and margins.
+    - Automatically transcribes speech for each segment using **Faster-Whisper** (runs locally / no API key required, supports EN, JA, ZH, and auto-detection).
+    - Simultaneously outputs `lqa_issues.json` and **Excel/Google Spreadsheet compatible `lqa_issues.csv` (UTF-8 BOM)**.
+  - **Step 4 (Clip & Image Generation with All Tracks)**:
+    - Clips videos in a few seconds **without re-encoding, preserving all audio tracks (game sound, microphone, etc.)** using FFmpeg `-map 0 -c copy`.
+    - Automatically generates a snapshot image at the start + 0.1s for each issue (e.g., `issue_001.png`).
+- **Intuitive Web UI (Gradio)**:
+  - Specify file name prefixes (e.g., `stage1`, `bug`) and starting ID numbers (e.g., `10`).
+  - Parameter adjustment, individual step execution, and real-time log display.
 
 ---
 
-## 動画ファイルの準備
+## Preparing Video Files
 
-SheepBell では、テスターの声を、テスト対象やデスクトップの音声とは別の音声トラックに録音することを推奨します。
-別の音声トラックにすることで、テスト対象の音声によってテスターの音声がマスクされることを防げるほか、テスト対象内にそもそもボイスオーバーが入っていた場合の誤検知も予防できます。
+For SheepBell, it is recommended to record the tester's voice on a separate audio track from the game or desktop audio.
+Using a separate audio track prevents the tester's voice from being masked by the game audio and avoids false positives when the game has its own voiceovers.
 
-以下は OBS での設定例です。
+Below is an example setup using OBS:
 
-1. [オーディオ] ペインで歯車のアイコンをクリックし、 [オーディオの詳細プロパティ] を開きます。
+1. Click the gear icon in the **Audio Mixer** pane and open **Advanced Audio Properties**.
 
 ![OBS Audio pane](./imgs/audio_pane.png)
 
-2. マイク音声をトラック2、ゲーム音をトラック1に割り当てます。このとき、もう一方のトラックにはチェックが入っていないことを確認してください。
+2. Assign the microphone audio to Track 2 and the game audio to Track 1. Make sure the other tracks are unchecked for each source.
 
 ![OBS Audio tracks](./imgs/audio_tracks.png)
 
-※ この例ではデスクトップ音声はミュートにしているため、設定を変更していません。お使いの環境に合わせて適宜調整してください。
+*Note: In this example, the desktop audio is muted, so its settings are not changed. Please adjust according to your environment.*
 
-3. [コントロール] ペインの設定をクリックし、[設定] を開きます。
+3. Click **Settings** in the **Controls** pane.
 
 ![OBS Control pane](./imgs/control_pane.png)
 
-4. [出力] タブの [録画] セクションを開き、音声トラックの欄で出力したいトラックすべてにチェックが入っていることを確認してください。
+4. Go to the **Output** tab, open the **Recording** section, and ensure that all the tracks you want to output are checked in the Audio Track section.
 
 ![OBS Recording settings](./imgs/recording_settings.png)
 
-これで作成された動画ファイルには、指定したトラックすべてが含まれるようになります。
+Now, the created video file will contain all the specified audio tracks.
 
-きちんと録画できているか確認するには、MediaInfo で情報を見るか、VLC やメディアプレイヤーなどで音声トラックを選択してみてください。
+To check if it recorded correctly, you can view the info with MediaInfo or try selecting different audio tracks in VLC or other media players.
 
-:::
-SheepBell には音声トラックの選択画面で 30 秒分のプレビューが可能です。
-テスト開始前に「〇月〇日、今から〇〇のテストをします」などの情報を吹き込んでおけば、トラックの判別が容易になることに加え、テストのインデックスにもなるためおすすめです。
-:::
+> [!NOTE]
+> SheepBell allows a 30-second preview on the audio track selection screen.
+> We recommend recording a short message before starting the test (e.g., "Today is [Date], starting test for [Feature]") as it makes track identification easier and serves as an index for the test.
 
-## プログラムの起動
+## Running the Program
 
-SheepBell はローカル環境または Google Colab で実行可能です。
-ローカルで実行するには uv や python が必要となります。環境構築が難しい場合は、Google Colab で実行することを推奨します。
+SheepBell can be run locally or on Google Colab.
+To run locally, `uv` or `python` is required. If setting up a local environment is difficult, we recommend using Google Colab.
 
-### 💻 ローカル環境での実行 (Windows / Mac / Linux)
+### 💻 Local Execution (Windows / Mac / Linux)
 
-#### 前提条件
-- **Python 3.10+** (uv 推奨)
+#### Prerequisites
+- **Python 3.10+** (`uv` recommended)
 
-#### 起動方法
+#### Startup Instructions
 ```bash
-# 依存関係のインストール
+# Install dependencies
 uv sync
 
-# Gradio UI の起動
+# Launch the Gradio UI
 uv run python app.py
 ```
-ブラウザで `http://127.0.0.1:7860` を開いてください。
+Open `http://127.0.0.1:7860` in your browser.
 
 ---
 
-### ☁️ Google Colab での実行 (GPU無料枠対応)
+### ☁️ Execution on Google Colab (Free GPU supported)
 
-リポジトリ直下の [`colab_sheepbell.ipynb`](colab_sheepbell.ipynb) を Google Colab にアップロードして実行するだけで、GPU（T4）環境上で爆速文字起こし＆動画切り出しが可能です。
+Simply upload [`colab_sheepbell.ipynb`](colab_sheepbell.ipynb) from the root of the repository to Google Colab and run it to perform lightning-fast transcription & video clipping on a GPU (T4) environment.
 
-1. Google Colab で `colab_sheepbell.ipynb` を開く（ランタイムのタイプを「T4 GPU」に設定）。
-2. Google Drive をマウント（動画ファイルの受け渡しがスムーズになります）。
-3. セルを実行して `!python app.py --share` を起動。
-4. 発行された `https://xxxx.gradio.live` のURLを開いて利用。
+1. Open `colab_sheepbell.ipynb` in Google Colab (Set Runtime type to "T4 GPU").
+2. Mount Google Drive (Recommended for smooth transfer of video files).
+3. Run the cells to launch `!python app.py --share`.
+4. Open the generated `https://xxxx.gradio.live` URL to use the tool.
 
 ---
 
-### 🧪 テスト実行
+Alternatively, you can open the Google Colab notebook from the URL below, select **File** > **Save a copy in Drive**, and use it in your own drive.
+[Open in Google Colab](https://colab.research.google.com/drive/1ecQ15UvafD5_uotnd15CYwU6WC7dPNND?usp=sharing)
+
+### 🧪 Running Tests
 
 ```bash
 uv run pytest
 ```
 
-## 使い方
+## Usage
 
-### 画面構成
+### UI Overview
 
 ![SheepBell UI overview](./imgs/ui_overview.png)
 
-### 操作手順
+### Steps
 
-1. 動画ファイルパスを入力する（絶対パス・相対パスいずれも可。Colab実行時は相対パス推奨）
-2. （複数の動画がある場合）出力先ディレクトリやファイル名の命名ルール、インデックスの開始番号などを設定
-3. 音声トラックの確認。視聴をすると確実
-4. 文字起こしを行う場合は、言語を選択
-5. 「処理を開始する」をクリック
-6. ログに完了が表示されるのを待つ
+1. Enter the video file path (Absolute or relative path. Relative path is recommended when running on Colab).
+2. (If you have multiple videos) Set the output directory, file naming rules, index start number, etc.
+3. Confirm the audio track. Previewing it is the most reliable way.
+4. Select the language if you want to transcribe.
+5. Click "Start Processing".
+6. Wait for the completion message in the log.
 
-これで指したフォルダに以下の項目が作成されます。
+The following items will be created in the specified folder:
 
-1. 問題点をまとめたファイル（JSON および CSV。Colab で起動した場合はさらにスプレッドシート）
-2. 問題箇所のスクリーンショットおよび動画
+1. A file summarizing the issues (JSON and CSV. And a spreadsheet if run on Colab).
+2. Screenshots and video clips of the issues.
 
-:::
-上記の設定は、以下の項目以外はデフォルトでも動くようになっています。
-精度を求めるなら微調整が必要になります。その際は、テストを数回繰り返して最適な値を探ってください。
-:::
-
+> [!NOTE]
+> The above settings will work with default values except for the specified fields.
+> If you need higher accuracy, fine-tuning will be required. In that case, please repeat the test a few times to find the optimal values.
