@@ -6,6 +6,7 @@ import gradio as gr
 
 from lqa_clipper.pipeline import run_pipeline
 from lqa_clipper.audio_extractor import extract_preview_audio
+from lqa_clipper.i18n import get_locale, get_language_choices
 
 
 # デフォルト値の定義
@@ -132,11 +133,63 @@ def gradio_run(
         yield log_msg
 
 
+def on_change_language(lang_code: str):
+    """Dynamically update all UI components when language changes."""
+    t = get_locale(lang_code)
+    header_text = f"{t.get('header_title', '')}\n\n{t.get('header_subtitle', '')}"
+    sec1_text = f'<div class="section-title">{t.get("section_1", "")}</div>'
+    sec2_text = f'<div class="section-title">{t.get("section_2", "")}</div>'
+    sec3_text = f'<div class="section-title">{t.get("section_3", "")}</div>'
+    sec4_text = f'<div class="section-title">{t.get("section_4", "")}</div>'
+    sec5_text = f'<div class="section-title">{t.get("section_5", "")}</div>'
+    sec_log_text = f'<div class="section-title">{t.get("section_log", "")}</div>'
+
+    return (
+        gr.update(value=header_text),
+        gr.update(value=sec1_text),
+        gr.update(label=t.get("video_path_label"), placeholder=t.get("video_path_placeholder")),
+        gr.update(label=t.get("output_dir_label")),
+        gr.update(label=t.get("file_prefix_label"), info=t.get("file_prefix_info")),
+        gr.update(label=t.get("id_start_index_label")),
+        gr.update(value=sec2_text),
+        gr.update(label=t.get("game_track_label"), info=t.get("game_track_info")),
+        gr.update(label=t.get("mic_track_label"), info=t.get("mic_track_info")),
+        gr.update(value=t.get("preview_btn")),
+        gr.update(label=t.get("audio_preview_label")),
+        gr.update(label=t.get("cb_mix_audio_label"), info=t.get("cb_mix_audio_info")),
+        gr.update(value=sec3_text),
+        gr.update(label=t.get("vad_threshold_label"), info=t.get("vad_threshold_info")),
+        gr.update(label=t.get("min_silence_label"), info=t.get("min_silence_info")),
+        gr.update(label=t.get("margin_pre_label"), info=t.get("margin_pre_info")),
+        gr.update(label=t.get("margin_post_label"), info=t.get("margin_post_info")),
+        gr.update(value=sec4_text),
+        gr.update(label=t.get("cb_transcription_label")),
+        gr.update(label=t.get("whisper_model_label")),
+        gr.update(label=t.get("whisper_lang_label")),
+        gr.update(label=t.get("cb_snapshots_label")),
+        gr.update(label=t.get("snapshot_offset_label"), info=t.get("snapshot_offset_info")),
+        gr.update(value=sec5_text),
+        gr.update(label=t.get("cb_steps_1_to_3_label")),
+        gr.update(label=t.get("cb_step_4_label")),
+        gr.update(value=t.get("run_btn")),
+        gr.update(value=t.get("reset_btn")),
+        gr.update(value=sec_log_text),
+        gr.update(label=t.get("lang_selector_label")),
+    )
+
+
 custom_css = """
 /* 全体のフォントとベース調整 */
 .gradio-container {
     max-width: 960px !important;
     margin: 0 auto !important;
+}
+
+/* 言語選択ヘッダー */
+.top-bar {
+    display: flex !important;
+    justify-content: flex-end !important;
+    margin-bottom: 8px !important;
 }
 
 /* セクション見出しのアンダーラインスタイル */
@@ -223,8 +276,11 @@ custom_css = """
 """
 
 
-def create_app() -> gr.Blocks:
-    """Create and configure the Gradio web interface with clean Teal theme."""
+def create_app(initial_lang: str = "ja") -> gr.Blocks:
+    """Create and configure the Gradio web interface with i18n support."""
+    t = get_locale(initial_lang)
+    lang_choices = get_language_choices()
+
     theme = gr.themes.Soft(
         primary_hue="teal",
         secondary_hue="slate",
@@ -236,37 +292,45 @@ def create_app() -> gr.Blocks:
     )
 
     with gr.Blocks(title="ゲームLQA 自動動画クリップツール", theme=theme, css=custom_css) as app:
-        gr.Markdown(
-            """
-            # 🎮 ゲームLQA用 自動動画クリップ & 文字起こしツール
-            OBSプレイ録画からマイク音声を検出し、**全トラック保持動画クリップ・静止画・Faster-Whisper文字起こし・CSV/JSON**を自動生成します。
-            """
+        # 言語セレクター（右上）
+        with gr.Row():
+            gr.HTML('<div style="flex-grow: 1;"></div>')
+            lang_selector = gr.Dropdown(
+                label=t.get("lang_selector_label", "🌐 Display Language"),
+                choices=lang_choices,
+                value=initial_lang,
+                scale=2,
+                min_width=180,
+            )
+
+        header_md = gr.Markdown(
+            f"{t.get('header_title', '')}\n\n{t.get('header_subtitle', '')}"
         )
 
         # ① 入力 & 出力設定
         with gr.Column(elem_classes=["section-block"]):
-            gr.HTML('<div class="section-title">📁 1. 入力・出力 & ファイル設定</div>')
+            sec1_html = gr.HTML(f'<div class="section-title">{t.get("section_1", "")}</div>')
             video_input = gr.Textbox(
-                label="動画ファイルパス (Video Path)",
-                placeholder=r"sample/sample_0game_1mic.mkv または Google Driveのパス",
+                label=t.get("video_path_label"),
+                placeholder=t.get("video_path_placeholder"),
                 value=DEFAULT_VALUES["video_path"],
                 lines=1,
             )
             with gr.Row():
                 output_dir_input = gr.Textbox(
-                    label="出力先ディレクトリ (Output Directory)",
+                    label=t.get("output_dir_label"),
                     value=DEFAULT_VALUES["output_dir"],
                     lines=1,
                     scale=6,
                 )
                 file_prefix_input = gr.Textbox(
-                    label="ファイル名 Prefix",
+                    label=t.get("file_prefix_label"),
                     value=DEFAULT_VALUES["file_prefix"],
-                    info="例: issue, stage1",
+                    info=t.get("file_prefix_info"),
                     scale=4,
                 )
                 id_start_index_input = gr.Number(
-                    label="開始 ID 番号",
+                    label=t.get("id_start_index_label"),
                     value=DEFAULT_VALUES["id_start_index"],
                     precision=0,
                     scale=2,
@@ -274,55 +338,55 @@ def create_app() -> gr.Blocks:
 
         # ② 音声トラック & 試聴プレビュー & 音声ミックス設定
         with gr.Column(elem_classes=["section-block"]):
-            gr.HTML('<div class="section-title">🎙️ 2. 音声トラック設定 & 試聴プレビュー</div>')
+            sec2_html = gr.HTML(f'<div class="section-title">{t.get("section_2", "")}</div>')
             with gr.Row():
                 game_track_input = gr.Number(
-                    label="ゲーム音声トラック (0-indexed)",
+                    label=t.get("game_track_label"),
                     value=DEFAULT_VALUES["game_track_index"],
                     precision=0,
-                    info="通常は 0",
+                    info=t.get("game_track_info"),
                     scale=3,
                 )
                 mic_track_input = gr.Number(
-                    label="マイク音声トラック (0-indexed)",
+                    label=t.get("mic_track_label"),
                     value=DEFAULT_VALUES["mic_track_index"],
                     precision=0,
-                    info="通常は 1 (VAD検出対象)",
+                    info=t.get("mic_track_info"),
                     scale=3,
                 )
-                preview_btn = gr.Button("🎧 マイク音声を試聴 (先頭30秒)", variant="secondary", scale=4)
+                preview_btn = gr.Button(t.get("preview_btn"), variant="secondary", scale=4)
 
             audio_preview = gr.Audio(
-                label="音声プレビュー (再生してマイク音声か確認できます)",
+                label=t.get("audio_preview_label"),
                 type="filepath",
                 interactive=False,
             )
 
             cb_mix_audio = gr.Checkbox(
-                label="ゲーム音とマイク音をミックスして出力する (推奨: どのプレイヤー・ブラウザでも両方の音が同時に再生されます)",
+                label=t.get("cb_mix_audio_label"),
                 value=DEFAULT_VALUES["mix_audio"],
-                info="チェックを外すと元のマルチトラック分離状態 (-map 0) で出力します",
+                info=t.get("cb_mix_audio_info"),
             )
 
         # ③ 音声検出 (VAD) & マージ設定
         with gr.Column(elem_classes=["section-block"]):
-            gr.HTML('<div class="section-title">🎛️ 3. 音声検出 (Silero VAD) & 発話マージ設定</div>')
+            sec3_html = gr.HTML(f'<div class="section-title">{t.get("section_3", "")}</div>')
             with gr.Row():
                 vad_threshold_slider = gr.Slider(
                     minimum=0.1,
                     maximum=0.9,
                     value=DEFAULT_VALUES["vad_threshold"],
                     step=0.05,
-                    label="VAD しきい値 (感度)",
-                    info="大きいほど誤検知減少、小さいほど小声を検知",
+                    label=t.get("vad_threshold_label"),
+                    info=t.get("vad_threshold_info"),
                 )
                 min_silence_slider = gr.Slider(
                     minimum=1.0,
                     maximum=10.0,
                     value=DEFAULT_VALUES["min_silence_sec"],
                     step=0.5,
-                    label="無音許容時間 [秒]",
-                    info="この秒数未満の無音は同一Issueとして結合",
+                    label=t.get("min_silence_label"),
+                    info=t.get("min_silence_info"),
                 )
             with gr.Row():
                 margin_pre_slider = gr.Slider(
@@ -330,35 +394,35 @@ def create_app() -> gr.Blocks:
                     maximum=15.0,
                     value=DEFAULT_VALUES["margin_pre_sec"],
                     step=0.5,
-                    label="前マージン [秒]",
-                    info="発話開始前の余白時間",
+                    label=t.get("margin_pre_label"),
+                    info=t.get("margin_pre_info"),
                 )
                 margin_post_slider = gr.Slider(
                     minimum=0.0,
                     maximum=15.0,
                     value=DEFAULT_VALUES["margin_post_sec"],
                     step=0.5,
-                    label="後マージン [秒]",
-                    info="発話終了後の余白時間",
+                    label=t.get("margin_post_label"),
+                    info=t.get("margin_post_info"),
                 )
 
         # ④ 文字起こし & スナップショット設定
         with gr.Column(elem_classes=["section-block"]):
-            gr.HTML('<div class="section-title">🤖 4. 文字起こし & 静止画スナップショット設定</div>')
+            sec4_html = gr.HTML(f'<div class="section-title">{t.get("section_4", "")}</div>')
             with gr.Row():
                 with gr.Column(scale=5):
                     cb_transcription = gr.Checkbox(
-                        label="Faster-Whisper で文字起こしを行う (ローカル/GPU)",
+                        label=t.get("cb_transcription_label"),
                         value=DEFAULT_VALUES["enable_transcription"],
                     )
                     with gr.Row():
                         whisper_model_dd = gr.Dropdown(
-                            label="モデルサイズ",
+                            label=t.get("whisper_model_label"),
                             choices=["tiny", "base", "small", "medium", "large-v3"],
                             value=DEFAULT_VALUES["whisper_model"],
                         )
                         whisper_lang_dd = gr.Dropdown(
-                            label="認識言語",
+                            label=t.get("whisper_lang_label"),
                             choices=[
                                 "ja (日本語)",
                                 "en (英語)",
@@ -369,7 +433,7 @@ def create_app() -> gr.Blocks:
                         )
                 with gr.Column(scale=5):
                     cb_snapshots = gr.Checkbox(
-                        label="開始直後のスナップショット静止画を自動生成する",
+                        label=t.get("cb_snapshots_label"),
                         value=DEFAULT_VALUES["enable_snapshots"],
                     )
                     snapshot_offset_slider = gr.Slider(
@@ -377,32 +441,32 @@ def create_app() -> gr.Blocks:
                         maximum=2.0,
                         value=DEFAULT_VALUES["snapshot_offset_sec"],
                         step=0.05,
-                        label="スナップショット位置 (開始 + N秒後)",
-                        info="デフォルト: 0.1秒後のフレーム",
+                        label=t.get("snapshot_offset_label"),
+                        info=t.get("snapshot_offset_info"),
                     )
 
         # ⑤ 実行制御 & 開始ボタン
         with gr.Column(elem_classes=["section-block"]):
-            gr.HTML('<div class="section-title">🚦 5. パイプライン実行</div>')
+            sec5_html = gr.HTML(f'<div class="section-title">{t.get("section_5", "")}</div>')
             with gr.Row():
                 cb_steps_1_to_3 = gr.Checkbox(
-                    label="Step 1〜3を実行 (マイク抽出・VAD・文字起こし・JSON/CSV出力)",
+                    label=t.get("cb_steps_1_to_3_label"),
                     value=DEFAULT_VALUES["run_steps_1_to_3"],
                 )
                 cb_step_4 = gr.Checkbox(
-                    label="Step 4を実行 (クリップ動画 & 静止画生成)",
+                    label=t.get("cb_step_4_label"),
                     value=DEFAULT_VALUES["run_step_4"],
                 )
 
             with gr.Row():
                 run_btn = gr.Button(
-                    "🚀 処理を開始する (Run Pipeline)",
+                    t.get("run_btn"),
                     variant="primary",
                     elem_classes=["primary-btn"],
                     scale=8,
                 )
                 reset_btn = gr.Button(
-                    "🔄 デフォルトに戻す",
+                    t.get("reset_btn"),
                     variant="secondary",
                     elem_classes=["reset-btn"],
                     scale=2,
@@ -410,7 +474,7 @@ def create_app() -> gr.Blocks:
 
         # ⑥ 実行ログ（ターミナル風ダーク表示）
         with gr.Column(elem_classes=["section-block"]):
-            gr.HTML('<div class="section-title">📜 実行ログ & 進捗状況</div>')
+            sec_log_html = gr.HTML(f'<div class="section-title">{t.get("section_log", "")}</div>')
             log_output = gr.Textbox(
                 label="ログコンソール",
                 show_label=False,
@@ -421,13 +485,52 @@ def create_app() -> gr.Blocks:
                 elem_classes=["log-box"],
             )
 
-        # イベントハンドラ
+        # 言語切り替えイベント
+        lang_selector.change(
+            fn=on_change_language,
+            inputs=[lang_selector],
+            outputs=[
+                header_md,
+                sec1_html,
+                video_input,
+                output_dir_input,
+                file_prefix_input,
+                id_start_index_input,
+                sec2_html,
+                game_track_input,
+                mic_track_input,
+                preview_btn,
+                audio_preview,
+                cb_mix_audio,
+                sec3_html,
+                vad_threshold_slider,
+                min_silence_slider,
+                margin_pre_slider,
+                margin_post_slider,
+                sec4_html,
+                cb_transcription,
+                whisper_model_dd,
+                whisper_lang_dd,
+                cb_snapshots,
+                snapshot_offset_slider,
+                sec5_html,
+                cb_steps_1_to_3,
+                cb_step_4,
+                run_btn,
+                reset_btn,
+                sec_log_html,
+                lang_selector,
+            ],
+        )
+
+        # プレビュー試聴イベント
         preview_btn.click(
             fn=gradio_preview_audio,
             inputs=[video_input, mic_track_input, output_dir_input],
             outputs=[audio_preview],
         )
 
+        # 実行イベント
         run_btn.click(
             fn=gradio_run,
             inputs=[
@@ -453,6 +556,7 @@ def create_app() -> gr.Blocks:
             outputs=[log_output],
         )
 
+        # リセットイベント
         reset_btn.click(
             fn=reset_to_defaults,
             inputs=[],
@@ -488,9 +592,10 @@ if __name__ == "__main__":
     parser.add_argument("--share", action="store_true", help="Create a publicly shareable Gradio link (for Colab)")
     parser.add_argument("--port", type=int, default=7860, help="Port to run the web server on")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host address (e.g. 0.0.0.0 for containers)")
+    parser.add_argument("--lang", type=str, default="ja", help="Initial language (ja, en, zh)")
     args = parser.parse_args()
 
-    demo = create_app()
+    demo = create_app(initial_lang=args.lang)
     demo.launch(
         server_name="0.0.0.0" if args.share else args.host,
         server_port=args.port,
