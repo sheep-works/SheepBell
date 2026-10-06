@@ -1,9 +1,34 @@
 import argparse
 import os
 from pathlib import Path
+from typing import Optional
 import gradio as gr
 
 from lqa_clipper.pipeline import run_pipeline
+from lqa_clipper.audio_extractor import extract_preview_audio
+
+
+def gradio_preview_audio(video_path: str, mic_track_index: int, output_dir: str):
+    """Extract audio snippet for user preview."""
+    if not video_path or not video_path.strip():
+        gr.Warning("動画ファイルパスを入力してください。")
+        return None
+
+    clean_video_path = video_path.strip().strip('"').strip("'")
+    clean_out_dir = output_dir.strip().strip('"').strip("'") if output_dir else "./issues"
+
+    try:
+        preview_wav = extract_preview_audio(
+            video_path=clean_video_path,
+            mic_track_index=int(mic_track_index),
+            duration_sec=30,
+            output_dir=clean_out_dir,
+        )
+        gr.Info(f"トラック {mic_track_index} の音声を読み込みました。再生してマイク音か確認してください。")
+        return str(preview_wav)
+    except Exception as e:
+        gr.Error(str(e))
+        return None
 
 
 def gradio_run(
@@ -75,7 +100,7 @@ def create_app() -> gr.Blocks:
                 gr.Markdown("### ⚙️ 入力 & 出力設定")
                 video_input = gr.Textbox(
                     label="動画ファイルパス (Video Path)",
-                    placeholder=r"/content/drive/MyDrive/Videos/gameplay.mp4",
+                    placeholder=r"sample/sample_0game_1mic.mkv",
                     value=r"sample/sample_0game_1mic.mkv",
                     lines=1,
                 )
@@ -90,6 +115,15 @@ def create_app() -> gr.Blocks:
                         label="出力先ディレクトリ",
                         value="./issues",
                         lines=1,
+                    )
+
+                with gr.Group():
+                    with gr.Row():
+                        preview_btn = gr.Button("🎧 指定トラックの音声を試聴する (先頭30秒)", variant="secondary", size="sm")
+                    audio_preview = gr.Audio(
+                        label="音声プレビュー (再生してマイク音声か確認)",
+                        type="filepath",
+                        interactive=False,
                     )
 
                 with gr.Row():
@@ -204,6 +238,12 @@ def create_app() -> gr.Blocks:
                     interactive=False,
                     autoscroll=True,
                 )
+
+        preview_btn.click(
+            fn=gradio_preview_audio,
+            inputs=[video_input, mic_track_input, output_dir_input],
+            outputs=[audio_preview],
+        )
 
         run_btn.click(
             fn=gradio_run,
