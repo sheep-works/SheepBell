@@ -11,21 +11,24 @@ def clip_video_issues(
     issues_or_json_path: Union[str, Path, List[Dict[str, Any]]],
     output_dir: Union[str, Path] = "./issues",
     file_prefix: str = "issue",
+    mix_audio: bool = True,
+    game_track_index: int = 0,
+    mic_track_index: int = 1,
 ) -> List[Path]:
-    """Step 4: Cut video clips for each issue using FFmpeg with '-c copy' and all streams (-map 0).
+    """Step 4: Cut video clips for each issue.
 
     Args:
         video_path: Path to the original input video.
         issues_or_json_path: Either a list of issue dicts or a path to 'lqa_issues.json'.
         output_dir: Directory where clipped videos will be saved (default: './issues').
         file_prefix: Prefix used for fallback naming (default: 'issue').
+        mix_audio: If True, mixes game audio and mic audio into a single audio track for universal playback.
+                   If False, keeps separate audio tracks (-map 0 -c copy).
+        game_track_index: Index of the game audio track (default: 0).
+        mic_track_index: Index of the mic audio track (default: 1).
 
     Returns:
         List of Paths to generated clip files.
-
-    Raises:
-        FileNotFoundError: If video_path or json_path is missing.
-        RuntimeError: If FFmpeg clipping fails.
     """
     video_path = Path(video_path).resolve()
     if not video_path.exists():
@@ -59,7 +62,6 @@ def clip_video_issues(
         if end_ts <= start_ts:
             continue
 
-        # Use explicitly provided clip_path or file_prefix, or fallback
         if "clip_path" in issue and issue["clip_path"]:
             clip_filename = Path(issue["clip_path"]).name
         elif "file_prefix" in issue and issue["file_prefix"]:
@@ -69,24 +71,52 @@ def clip_video_issues(
 
         clip_path = out_dir / clip_filename
 
-        # Note: -map 0 copies ALL audio tracks (Game sound + Mic sound) and video tracks
-        cmd = [
-            ffmpeg_bin,
-            "-y",
-            "-ss",
-            str(start_ts),
-            "-to",
-            str(end_ts),
-            "-i",
-            str(video_path),
-            "-map",
-            "0",
-            "-c",
-            "copy",
-            "-avoid_negative_ts",
-            "make_zero",
-            str(clip_path),
-        ]
+        if mix_audio and game_track_index != mic_track_index:
+            # Mix game and mic audio into 1 stereo track (video is still -c:v copy)
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-ss",
+                str(start_ts),
+                "-to",
+                str(end_ts),
+                "-i",
+                str(video_path),
+                "-filter_complex",
+                f"[0:a:{game_track_index}][0:a:{mic_track_index}]amix=inputs=2:duration=longest[aout]",
+                "-map",
+                "0:v:0",
+                "-map",
+                "[aout]",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-avoid_negative_ts",
+                "make_zero",
+                str(clip_path),
+            ]
+        else:
+            # Preserve separate streams
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-ss",
+                str(start_ts),
+                "-to",
+                str(end_ts),
+                "-i",
+                str(video_path),
+                "-map",
+                "0",
+                "-c",
+                "copy",
+                "-avoid_negative_ts",
+                "make_zero",
+                str(clip_path),
+            ]
 
         try:
             subprocess.run(
@@ -97,8 +127,35 @@ def clip_video_issues(
                 check=True,
             )
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr or e.stdout or "Unknown ffmpeg error"
-            raise RuntimeError(f"FFmpeg clipping failed for Issue {issue_id}:\n{error_msg}") from e
+            # Fallback to simple -map 0 copy if filter_complex fails (e.g. single track video)
+            fallback_cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-ss",
+                str(start_ts),
+                "-to",
+                str(end_ts),
+                "-i",
+                str(video_path),
+                "-map",
+                "0",
+                "-c",
+                "copy",
+                "-avoid_negative_ts",
+                "make_zero",
+                str(clip_path),
+            ]
+            try:
+                subprocess.run(
+                    fallback_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=True,
+                )
+            except subprocess.CalledProcessError as fallback_e:
+                error_msg = fallback_e.stderr or fallback_e.stdout or e.stderr or "Unknown ffmpeg error"
+                raise RuntimeError(f"FFmpeg clipping failed for Issue {issue_id}:\n{error_msg}") from fallback_e
         except FileNotFoundError as e:
             raise RuntimeError(
                 f"FFmpeg executable '{ffmpeg_bin}' not found. Please ensure FFmpeg is installed."

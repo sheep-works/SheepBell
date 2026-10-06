@@ -15,6 +15,7 @@ from lqa_clipper.snapshot_extractor import extract_snapshots
 def run_pipeline(
     video_path: Union[str, Path],
     mic_track_index: int = 1,
+    game_track_index: int = 0,
     vad_threshold: float = 0.5,
     min_silence_sec: float = 2.0,
     margin_pre_sec: float = 3.0,
@@ -29,6 +30,7 @@ def run_pipeline(
     snapshot_offset_sec: float = 0.1,
     id_start_index: int = 1,
     file_prefix: str = "issue",
+    mix_audio: bool = True,
 ) -> Generator[str, None, Dict[str, Any]]:
     """Pipeline orchestrator for LQA video clipping, transcription, snapshots, and JSON/CSV export.
 
@@ -133,13 +135,17 @@ def run_pipeline(
                 return {"status": "error", "message": "JSON file not found", "issues": []}
 
         if run_step_4:
-            # Step 4: Video clips (all audio tracks retained with -map 0)
-            yield log(f"--- [Step 4/4] FFmpeg による高速クリップ生成中 (-c copy, -map 0 全トラック保持) ---")
+            # Step 4: Video clips
+            mix_mode_str = "ゲーム音+マイク音を合成ミックス" if mix_audio else "全トラック分離保持 (-map 0)"
+            yield log(f"--- [Step 4/4] FFmpeg による高速クリップ生成中 (音声モード: {mix_mode_str}) ---")
             clip_paths = clip_video_issues(
                 video_path=video_path,
                 issues_or_json_path=issues,
                 output_dir=out_dir,
                 file_prefix=clean_prefix,
+                mix_audio=mix_audio,
+                game_track_index=game_track_index,
+                mic_track_index=mic_track_index,
             )
             yield log(f"✅ Step 4 (動画クリップ) 完了: {len(clip_paths)} 個のクリップ動画を生成 -> {out_dir}")
 

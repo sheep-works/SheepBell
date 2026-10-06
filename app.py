@@ -11,7 +11,9 @@ from lqa_clipper.audio_extractor import extract_preview_audio
 # デフォルト値の定義
 DEFAULT_VALUES = {
     "video_path": r"sample/sample_0game_1mic.mkv",
+    "game_track_index": 0,
     "mic_track_index": 1,
+    "mix_audio": True,
     "output_dir": "./issues",
     "file_prefix": "issue",
     "id_start_index": 1,
@@ -33,7 +35,9 @@ def reset_to_defaults():
     """Reset all UI inputs to their default states."""
     return (
         DEFAULT_VALUES["video_path"],
+        DEFAULT_VALUES["game_track_index"],
         DEFAULT_VALUES["mic_track_index"],
+        DEFAULT_VALUES["mix_audio"],
         DEFAULT_VALUES["output_dir"],
         DEFAULT_VALUES["file_prefix"],
         DEFAULT_VALUES["id_start_index"],
@@ -78,7 +82,9 @@ def gradio_preview_audio(video_path: str, mic_track_index: int, output_dir: str)
 
 def gradio_run(
     video_path: str,
+    game_track_index: int,
     mic_track_index: int,
+    mix_audio: bool,
     file_prefix: str,
     id_start_index: int,
     vad_threshold: float,
@@ -103,7 +109,9 @@ def gradio_run(
 
     pipeline_gen = run_pipeline(
         video_path=video_path.strip().strip('"').strip("'"),
-        mic_track_index=int(mic_track_index),
+        game_track_index=int(game_track_index) if game_track_index is not None else 0,
+        mic_track_index=int(mic_track_index) if mic_track_index is not None else 1,
+        mix_audio=mix_audio,
         id_start_index=int(id_start_index) if id_start_index else 1,
         file_prefix=file_prefix.strip() if file_prefix else "issue",
         vad_threshold=float(vad_threshold),
@@ -264,23 +272,36 @@ def create_app() -> gr.Blocks:
                     scale=2,
                 )
 
-        # ② マイク音声トラック & 試聴プレビュー
+        # ② 音声トラック & 試聴プレビュー & 音声ミックス設定
         with gr.Column(elem_classes=["section-block"]):
-            gr.HTML('<div class="section-title">🎙️ 2. マイク音声トラック & 試聴確認</div>')
+            gr.HTML('<div class="section-title">🎙️ 2. 音声トラック設定 & 試聴プレビュー</div>')
             with gr.Row():
-                mic_track_input = gr.Number(
-                    label="マイク音声トラック番号 (0-indexed)",
-                    value=DEFAULT_VALUES["mic_track_index"],
+                game_track_input = gr.Number(
+                    label="ゲーム音声トラック (0-indexed)",
+                    value=DEFAULT_VALUES["game_track_index"],
                     precision=0,
-                    info="OBS録画 (0=ゲーム音, 1=マイク音)",
+                    info="通常は 0",
                     scale=3,
                 )
-                preview_btn = gr.Button("🎧 指定トラックの音声を試聴する (先頭30秒)", variant="secondary", scale=4)
+                mic_track_input = gr.Number(
+                    label="マイク音声トラック (0-indexed)",
+                    value=DEFAULT_VALUES["mic_track_index"],
+                    precision=0,
+                    info="通常は 1 (VAD検出対象)",
+                    scale=3,
+                )
+                preview_btn = gr.Button("🎧 マイク音声を試聴 (先頭30秒)", variant="secondary", scale=4)
 
             audio_preview = gr.Audio(
                 label="音声プレビュー (再生してマイク音声か確認できます)",
                 type="filepath",
                 interactive=False,
+            )
+
+            cb_mix_audio = gr.Checkbox(
+                label="ゲーム音とマイク音をミックスして出力する (推奨: どのプレイヤー・ブラウザでも両方の音が同時に再生されます)",
+                value=DEFAULT_VALUES["mix_audio"],
+                info="チェックを外すと元のマルチトラック分離状態 (-map 0) で出力します",
             )
 
         # ③ 音声検出 (VAD) & マージ設定
@@ -369,7 +390,7 @@ def create_app() -> gr.Blocks:
                     value=DEFAULT_VALUES["run_steps_1_to_3"],
                 )
                 cb_step_4 = gr.Checkbox(
-                    label="Step 4を実行 (全トラック保持クリップ動画 & 静止画生成)",
+                    label="Step 4を実行 (クリップ動画 & 静止画生成)",
                     value=DEFAULT_VALUES["run_step_4"],
                 )
 
@@ -411,7 +432,9 @@ def create_app() -> gr.Blocks:
             fn=gradio_run,
             inputs=[
                 video_input,
+                game_track_input,
                 mic_track_input,
+                cb_mix_audio,
                 file_prefix_input,
                 id_start_index_input,
                 vad_threshold_slider,
@@ -435,7 +458,9 @@ def create_app() -> gr.Blocks:
             inputs=[],
             outputs=[
                 video_input,
+                game_track_input,
                 mic_track_input,
+                cb_mix_audio,
                 output_dir_input,
                 file_prefix_input,
                 id_start_index_input,
