@@ -7,22 +7,26 @@ from typing import Any, Dict, List, Optional, Union
 def merge_speech_segments(
     raw_segments: List[Dict[str, float]],
     min_silence_sec: float = 2.0,
-    margin_pre_sec: float = 3.0,
-    margin_post_sec: float = 3.0,
+    margin_pre_sec: float = 2.0,
+    margin_post_sec: float = 2.0,
     id_start_index: int = 1,
     file_prefix: str = "issue",
     video_ext: str = ".mp4",
 ) -> List[Dict[str, Any]]:
-    """Merge raw speech segments and apply pre/post margins to form structured issues.
+    """Merge raw speech segments and apply pre/post margins.
+
+    If two distinct speech segments are separated by >= min_silence_sec,
+    they will ALWAYS remain separate issues. When added margins overlap,
+    margins are clamped at the midpoint between the two segments instead
+    of merging them into a single issue.
 
     Args:
         raw_segments: List of raw segments with 'start' and 'end' keys in seconds.
         min_silence_sec: Minimum silence duration (in seconds) required to treat as separate issues.
-            Gaps shorter than this are merged into a single segment.
         margin_pre_sec: Seconds to subtract from the start timestamp.
         margin_post_sec: Seconds to add to the end timestamp.
-        id_start_index: Starting integer for issue IDs (default: 1).
-        file_prefix: Prefix string for generated files and ID representation (default: 'issue').
+        id_start_index: Starting integer for issue IDs.
+        file_prefix: Prefix string for generated files and ID representation.
         video_ext: Extension of clip video files (e.g. '.mp4', '.mkv').
 
     Returns:
@@ -34,7 +38,7 @@ def merge_speech_segments(
     # Sort segments by start time
     sorted_segments = sorted(raw_segments, key=lambda s: s["start"])
 
-    # 1. Merge segments separated by silence < min_silence_sec
+    # 1. Merge raw segments only if silence gap < min_silence_sec
     merged_raw: List[Dict[str, float]] = []
     current_start = sorted_segments[0]["start"]
     current_end = sorted_segments[0]["end"]
@@ -50,33 +54,45 @@ def merge_speech_segments(
             current_end = seg["end"]
     merged_raw.append({"start": current_start, "end": current_end})
 
-    # 2. Apply margins
+    # 2. Apply margins while preserving separation for all distinct segments
+    # If margins between adjacent segments overlap, clamp at the midpoint between them.
     margined: List[Dict[str, float]] = []
-    for seg in merged_raw:
-        m_start = max(0.0, seg["start"] - margin_pre_sec)
-        m_end = seg["end"] + margin_post_sec
-        margined.append({"start": m_start, "end": m_end})
+    n = len(merged_raw)
 
-    # 3. Resolve overlaps caused by added margins
-    resolved: List[Dict[str, float]] = []
-    c_start = margined[0]["start"]
-    c_end = margined[0]["end"]
+    for i in range(n):
+        seg = merged_raw[i]
+        orig_start = seg["start"]
+        orig_end = seg["end"]
 
-    for seg in margined[1:]:
-        if seg["start"] <= c_end:
-            c_end = max(c_end, seg["end"])
+        # Calculate start timestamp with pre-margin
+        if i == 0:
+            m_start = max(0.0, orig_start - margin_pre_sec)
         else:
-            resolved.append({"start": c_start, "end": c_end})
-            c_start = seg["start"]
-            c_end = seg["end"]
-    resolved.append({"start": c_start, "end": c_end})
+            prev_end = merged_raw[i - 1]["end"]
+            midpoint = (prev_end + orig_start) / 2.0
+            # Start cannot go before the midpoint of the gap with previous segment
+            m_start = max(0.0, max(orig_start - margin_pre_sec, midpoint))
 
-    # 4. Format structured issues with prefix and paths
+        # Calculate end timestamp with post-margin
+        if i == n - 1:
+            m_end = orig_end + margin_post_sec
+        else:
+            next_start = merged_raw[i + 1]["start"]
+            midpoint = (orig_end + next_start) / 2.0
+            # End cannot go past the midpoint of the gap with next segment
+            m_end = min(orig_end + margin_post_sec, midpoint)
+
+        margined.append({
+            "start": round(m_start, 2),
+            "end": round(m_end, 2),
+        })
+
+    # 3. Format structured issues with prefix and paths
     issues: List[Dict[str, Any]] = []
     ext = video_ext if video_ext.startswith(".") else f".{video_ext}"
     clean_prefix = file_prefix.strip() or "issue"
 
-    for offset, seg in enumerate(resolved):
+    for offset, seg in enumerate(margined):
         curr_id = id_start_index + offset
         name_prefix = f"{clean_prefix}_{curr_id:03d}"
         issues.append({
@@ -84,8 +100,8 @@ def merge_speech_segments(
             "file_prefix": name_prefix,
             "clip_path": f"{name_prefix}{ext}",
             "snapshot_path": f"{name_prefix}.png",
-            "timestamp_start": round(seg["start"], 2),
-            "timestamp_end": round(seg["end"], 2),
+            "timestamp_start": seg["start"],
+            "timestamp_end": seg["end"],
             "issue_tag": "",
             "description": "",
         })
@@ -124,8 +140,8 @@ def export_issues_to_csv(
 def merge_and_export_issues(
     raw_segments: List[Dict[str, float]],
     min_silence_sec: float = 2.0,
-    margin_pre_sec: float = 3.0,
-    margin_post_sec: float = 3.0,
+    margin_pre_sec: float = 2.0,
+    margin_post_sec: float = 2.0,
     id_start_index: int = 1,
     file_prefix: str = "issue",
     video_ext: str = ".mp4",
