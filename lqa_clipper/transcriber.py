@@ -1,3 +1,4 @@
+import os
 import wave
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -12,7 +13,7 @@ def _get_whisper_model(
     device: Optional[str] = None,
     compute_type: Optional[str] = None,
 ):
-    """Load and cache faster-whisper model."""
+    """Load and cache faster-whisper model with graceful CPU fallback on CUDA errors."""
     from faster_whisper import WhisperModel
 
     if device is None:
@@ -22,13 +23,31 @@ def _get_whisper_model(
         compute_type = "float16" if device == "cuda" else "int8"
 
     key = f"{model_size}_{device}_{compute_type}"
-    if key not in _whisper_models:
-        _whisper_models[key] = WhisperModel(
+    if key in _whisper_models:
+        return _whisper_models[key]
+
+    # Try loading on desired device (e.g. CUDA)
+    try:
+        model = WhisperModel(
             model_size_or_path=model_size,
             device=device,
             compute_type=compute_type,
         )
-    return _whisper_models[key]
+        _whisper_models[key] = model
+        return model
+    except Exception as e:
+        # If CUDA library missing (e.g. libcublas.so.12 in Colab), fallback to CPU automatically
+        if device == "cuda":
+            print(f"⚠️ CUDAでのモデル読み込みに失敗しました ({e})。CPUモード (int8) に自動フォールバックします。")
+            fallback_key = f"{model_size}_cpu_int8"
+            if fallback_key not in _whisper_models:
+                _whisper_models[fallback_key] = WhisperModel(
+                    model_size_or_path=model_size,
+                    device="cpu",
+                    compute_type="int8",
+                )
+            return _whisper_models[fallback_key]
+        raise e
 
 
 def _read_wav_slice(
@@ -71,18 +90,7 @@ def transcribe_issues(
     language: Optional[str] = "ja",
     device: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Transcribe speech for each issue using Faster-Whisper and populate description.
-
-    Args:
-        wav_path: Path to the 16kHz mono WAV file (extracted microphone track).
-        issues: List of issue dictionaries from Step 3.
-        model_size: Faster-Whisper model size ('tiny', 'base', 'small', 'medium', 'large-v3').
-        language: Language code ('ja', 'en', 'zh', or 'auto'/None for auto-detection).
-        device: 'cpu', 'cuda', or None for auto-detection.
-
-    Returns:
-        Updated list of issue dictionaries with 'description' populated.
-    """
+    """Transcribe speech for each issue using Faster-Whisper and populate description."""
     wav_path = Path(wav_path).resolve()
     if not wav_path.exists():
         raise FileNotFoundError(f"WAV audio file not found: {wav_path}")
@@ -92,7 +100,7 @@ def transcribe_issues(
 
     model = _get_whisper_model(model_size=model_size, device=device)
 
-    # Clean language code (e.g. 'auto', 'zh (中国語)' -> 'zh')
+    # Clean language code
     target_lang = None
     if language:
         clean_lang = language.split()[0].lower().strip()
@@ -110,15 +118,27 @@ def transcribe_issues(
         if len(audio_segment) == 0:
             continue
 
-        segments_gen, info = model.transcribe(
-            audio=audio_segment,
-            language=target_lang,
-            beam_size=5,
-            vad_filter=False,
-        )
-
-        texts = [seg.text.strip() for seg in segments_gen if seg.text.strip()]
-        transcription = " ".join(texts)
+        try:
+            segments_gen, info = model.transcribe(
+                audio=audio_segment,
+                language=target_lang,
+                beam_size=5,
+                vad_filter=False,
+            )
+            texts = [seg.text.strip() for seg in segments_gen if seg.text.strip()]
+            transcription = " ".join(texts)
+        except Exception as e:
+            # If transcription execution itself triggers CUDA error, fallback to CPU model
+            print(f"⚠️ 文字起こし実行中にエラーが発生しました ({e})。CPUで再試行します。")
+            cpu_model = _get_whisper_model(model_size=model_size, device="cpu", compute_type="int8")
+            segments_gen, info = cpu_model.transcribe(
+                audio=audio_segment,
+                language=target_lang,
+                beam_size=5,
+                vad_filter=False,
+            )
+            texts = [seg.text.strip() for seg in segments_gen if seg.text.strip()]
+            transcription = " ".join(texts)
 
         issue["description"] = transcription
 
