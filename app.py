@@ -8,6 +8,51 @@ from lqa_clipper.pipeline import run_pipeline
 from lqa_clipper.audio_extractor import extract_preview_audio
 
 
+# デフォルト値の定義
+DEFAULT_VALUES = {
+    "video_path": r"sample/sample_0game_1mic.mkv",
+    "mic_track_index": 1,
+    "output_dir": "./issues",
+    "file_prefix": "issue",
+    "id_start_index": 1,
+    "vad_threshold": 0.5,
+    "min_silence_sec": 2.0,
+    "margin_pre_sec": 3.0,
+    "margin_post_sec": 3.0,
+    "enable_transcription": True,
+    "whisper_model": "base",
+    "whisper_language": "ja (日本語)",
+    "enable_snapshots": True,
+    "snapshot_offset_sec": 0.1,
+    "run_steps_1_to_3": True,
+    "run_step_4": True,
+}
+
+
+def reset_to_defaults():
+    """Reset all UI inputs to their default states."""
+    return (
+        DEFAULT_VALUES["video_path"],
+        DEFAULT_VALUES["mic_track_index"],
+        DEFAULT_VALUES["output_dir"],
+        DEFAULT_VALUES["file_prefix"],
+        DEFAULT_VALUES["id_start_index"],
+        DEFAULT_VALUES["vad_threshold"],
+        DEFAULT_VALUES["min_silence_sec"],
+        DEFAULT_VALUES["margin_pre_sec"],
+        DEFAULT_VALUES["margin_post_sec"],
+        DEFAULT_VALUES["enable_transcription"],
+        DEFAULT_VALUES["whisper_model"],
+        DEFAULT_VALUES["whisper_language"],
+        DEFAULT_VALUES["enable_snapshots"],
+        DEFAULT_VALUES["snapshot_offset_sec"],
+        DEFAULT_VALUES["run_steps_1_to_3"],
+        DEFAULT_VALUES["run_step_4"],
+        None,  # audio_preview
+        "",    # log_output
+    )
+
+
 def gradio_preview_audio(video_path: str, mic_track_index: int, output_dir: str):
     """Extract audio snippet for user preview."""
     if not video_path or not video_path.strip():
@@ -90,7 +135,7 @@ custom_css = """
 .section-title {
     font-size: 1.15rem !important;
     font-weight: 700 !important;
-    color: #0f766e !important;
+    color: #14b8a6 !important;
     border-bottom: 2px solid #0d9488 !important;
     padding-bottom: 6px !important;
     margin-top: 28px !important;
@@ -135,7 +180,7 @@ custom_css = """
     margin-top: 4px !important;
     margin-bottom: 0 !important;
     font-size: 0.78rem !important;
-    color: #64748b !important;
+    color: #94a3b8 !important;
     line-height: 1.3 !important;
 }
 
@@ -147,15 +192,25 @@ custom_css = """
     font-weight: bold !important;
     border-radius: 8px !important;
     padding: 12px 24px !important;
-    margin-top: 16px !important;
-    margin-bottom: 24px !important;
 }
 
-/* ログ表示エリア */
+/* リセットボタン */
+.reset-btn {
+    border-radius: 8px !important;
+    padding: 12px 20px !important;
+    color: #94a3b8 !important;
+    border-color: #334155 !important;
+}
+
+/* ログ表示エリア（ターミナル風ダークスタイル） */
 .log-box textarea {
     font-family: Consolas, 'Courier New', monospace !important;
-    font-size: 0.9rem !important;
-    background-color: #f8fafc !important;
+    font-size: 0.88rem !important;
+    line-height: 1.5 !important;
+    background-color: #0b0f19 !important;
+    color: #38bdf8 !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 8px !important;
 }
 """
 
@@ -186,25 +241,25 @@ def create_app() -> gr.Blocks:
             video_input = gr.Textbox(
                 label="動画ファイルパス (Video Path)",
                 placeholder=r"sample/sample_0game_1mic.mkv または Google Driveのパス",
-                value=r"sample/sample_0game_1mic.mkv",
+                value=DEFAULT_VALUES["video_path"],
                 lines=1,
             )
             with gr.Row():
                 output_dir_input = gr.Textbox(
                     label="出力先ディレクトリ (Output Directory)",
-                    value="./issues",
+                    value=DEFAULT_VALUES["output_dir"],
                     lines=1,
                     scale=6,
                 )
                 file_prefix_input = gr.Textbox(
                     label="ファイル名 Prefix",
-                    value="issue",
+                    value=DEFAULT_VALUES["file_prefix"],
                     info="例: issue, stage1",
                     scale=4,
                 )
                 id_start_index_input = gr.Number(
                     label="開始 ID 番号",
-                    value=1,
+                    value=DEFAULT_VALUES["id_start_index"],
                     precision=0,
                     scale=2,
                 )
@@ -215,7 +270,7 @@ def create_app() -> gr.Blocks:
             with gr.Row():
                 mic_track_input = gr.Number(
                     label="マイク音声トラック番号 (0-indexed)",
-                    value=1,
+                    value=DEFAULT_VALUES["mic_track_index"],
                     precision=0,
                     info="OBS録画 (0=ゲーム音, 1=マイク音)",
                     scale=3,
@@ -235,7 +290,7 @@ def create_app() -> gr.Blocks:
                 vad_threshold_slider = gr.Slider(
                     minimum=0.1,
                     maximum=0.9,
-                    value=0.5,
+                    value=DEFAULT_VALUES["vad_threshold"],
                     step=0.05,
                     label="VAD しきい値 (感度)",
                     info="大きいほど誤検知減少、小さいほど小声を検知",
@@ -243,7 +298,7 @@ def create_app() -> gr.Blocks:
                 min_silence_slider = gr.Slider(
                     minimum=1.0,
                     maximum=10.0,
-                    value=2.0,
+                    value=DEFAULT_VALUES["min_silence_sec"],
                     step=0.5,
                     label="無音許容時間 [秒]",
                     info="この秒数未満の無音は同一Issueとして結合",
@@ -252,7 +307,7 @@ def create_app() -> gr.Blocks:
                 margin_pre_slider = gr.Slider(
                     minimum=0.0,
                     maximum=15.0,
-                    value=3.0,
+                    value=DEFAULT_VALUES["margin_pre_sec"],
                     step=0.5,
                     label="前マージン [秒]",
                     info="発話開始前の余白時間",
@@ -260,7 +315,7 @@ def create_app() -> gr.Blocks:
                 margin_post_slider = gr.Slider(
                     minimum=0.0,
                     maximum=15.0,
-                    value=3.0,
+                    value=DEFAULT_VALUES["margin_post_sec"],
                     step=0.5,
                     label="後マージン [秒]",
                     info="発話終了後の余白時間",
@@ -273,13 +328,13 @@ def create_app() -> gr.Blocks:
                 with gr.Column(scale=5):
                     cb_transcription = gr.Checkbox(
                         label="Faster-Whisper で文字起こしを行う (ローカル/GPU)",
-                        value=True,
+                        value=DEFAULT_VALUES["enable_transcription"],
                     )
                     with gr.Row():
                         whisper_model_dd = gr.Dropdown(
                             label="モデルサイズ",
                             choices=["tiny", "base", "small", "medium", "large-v3"],
-                            value="base",
+                            value=DEFAULT_VALUES["whisper_model"],
                         )
                         whisper_lang_dd = gr.Dropdown(
                             label="認識言語",
@@ -289,17 +344,17 @@ def create_app() -> gr.Blocks:
                                 "zh (中国語)",
                                 "auto (自動検出)",
                             ],
-                            value="ja (日本語)",
+                            value=DEFAULT_VALUES["whisper_language"],
                         )
                 with gr.Column(scale=5):
                     cb_snapshots = gr.Checkbox(
                         label="開始直後のスナップショット静止画を自動生成する",
-                        value=True,
+                        value=DEFAULT_VALUES["enable_snapshots"],
                     )
                     snapshot_offset_slider = gr.Slider(
                         minimum=0.0,
                         maximum=2.0,
-                        value=0.1,
+                        value=DEFAULT_VALUES["snapshot_offset_sec"],
                         step=0.05,
                         label="スナップショット位置 (開始 + N秒後)",
                         info="デフォルト: 0.1秒後のフレーム",
@@ -311,16 +366,28 @@ def create_app() -> gr.Blocks:
             with gr.Row():
                 cb_steps_1_to_3 = gr.Checkbox(
                     label="Step 1〜3を実行 (マイク抽出・VAD・文字起こし・JSON/CSV出力)",
-                    value=True,
+                    value=DEFAULT_VALUES["run_steps_1_to_3"],
                 )
                 cb_step_4 = gr.Checkbox(
                     label="Step 4を実行 (全トラック保持クリップ動画 & 静止画生成)",
-                    value=True,
+                    value=DEFAULT_VALUES["run_step_4"],
                 )
 
-            run_btn = gr.Button("🚀 処理を開始する (Run Pipeline)", variant="primary", elem_classes=["primary-btn"])
+            with gr.Row():
+                run_btn = gr.Button(
+                    "🚀 処理を開始する (Run Pipeline)",
+                    variant="primary",
+                    elem_classes=["primary-btn"],
+                    scale=8,
+                )
+                reset_btn = gr.Button(
+                    "🔄 デフォルトに戻す",
+                    variant="secondary",
+                    elem_classes=["reset-btn"],
+                    scale=2,
+                )
 
-        # ⑥ 実行ログ（ページ最下部にワイド表示）
+        # ⑥ 実行ログ（ターミナル風ダーク表示）
         with gr.Column(elem_classes=["section-block"]):
             gr.HTML('<div class="section-title">📜 実行ログ & 進捗状況</div>')
             log_output = gr.Textbox(
@@ -361,6 +428,31 @@ def create_app() -> gr.Blocks:
                 snapshot_offset_slider,
             ],
             outputs=[log_output],
+        )
+
+        reset_btn.click(
+            fn=reset_to_defaults,
+            inputs=[],
+            outputs=[
+                video_input,
+                mic_track_input,
+                output_dir_input,
+                file_prefix_input,
+                id_start_index_input,
+                vad_threshold_slider,
+                min_silence_slider,
+                margin_pre_slider,
+                margin_post_slider,
+                cb_transcription,
+                whisper_model_dd,
+                whisper_lang_dd,
+                cb_snapshots,
+                snapshot_offset_slider,
+                cb_steps_1_to_3,
+                cb_step_4,
+                audio_preview,
+                log_output,
+            ],
         )
 
     return app
