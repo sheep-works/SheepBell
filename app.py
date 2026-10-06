@@ -54,7 +54,6 @@ def gradio_run(
         yield "❌ エラー: 動画ファイルのパスを入力してください。"
         return
 
-    # Extract language code if formatted like "ja (日本語)"
     lang_code = whisper_language.split()[0].lower() if whisper_language else "auto"
 
     pipeline_gen = run_pipeline(
@@ -80,117 +79,184 @@ def gradio_run(
         yield log_msg
 
 
+custom_css = """
+/* 全体のフォントとベース調整 */
+.gradio-container {
+    max-width: 960px !important;
+    margin: 0 auto !important;
+}
+
+/* セクション見出しのアンダーラインスタイル */
+.section-title {
+    font-size: 1.15rem !important;
+    font-weight: 700 !important;
+    color: #0f766e !important;
+    border-bottom: 2px solid #0d9488 !important;
+    padding-bottom: 6px !important;
+    margin-top: 28px !important;
+    margin-bottom: 16px !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* セクション間のマージン */
+.section-block {
+    margin-bottom: 28px !important;
+}
+
+/* ボタン風に見える余計な囲み線を排除 */
+.clean-group {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+/* 実行ボタンのスタイリング */
+.primary-btn {
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%) !important;
+    color: white !important;
+    font-size: 1.1rem !important;
+    font-weight: bold !important;
+    border-radius: 8px !important;
+    padding: 12px 24px !important;
+    margin-top: 16px !important;
+    margin-bottom: 24px !important;
+}
+
+/* ログ表示エリア */
+.log-box textarea {
+    font-family: Consolas, 'Courier New', monospace !important;
+    font-size: 0.9rem !important;
+    background-color: #f8fafc !important;
+}
+"""
+
+
 def create_app() -> gr.Blocks:
-    """Create and configure the Gradio web interface."""
+    """Create and configure the Gradio web interface with clean Teal theme."""
     theme = gr.themes.Soft(
-        primary_hue="blue",
+        primary_hue="teal",
         secondary_hue="slate",
+        neutral_hue="slate",
+    ).set(
+        button_primary_background_fill="*primary_600",
+        button_primary_background_fill_hover="*primary_700",
+        button_primary_text_color="white",
     )
 
-    with gr.Blocks(title="ゲームLQA 自動動画クリップツール", theme=theme) as app:
+    with gr.Blocks(title="ゲームLQA 自動動画クリップツール", theme=theme, css=custom_css) as app:
         gr.Markdown(
             """
-            # 🎮 ゲームLQA用 自動動画クリップツール
-            OBS等のプレイ録画動画からテスターの発話音声を検出し、**全トラック保持動画クリップ・静止画スナップショット・Faster-Whisper文字起こし・CSV/JSON**を自動生成します。
+            # 🎮 ゲームLQA用 自動動画クリップ & 文字起こしツール
+            OBSプレイ録画からマイク音声を検出し、**全トラック保持動画クリップ・静止画・Faster-Whisper文字起こし・CSV/JSON**を自動生成します。
             """
         )
 
-        with gr.Row():
-            with gr.Column(scale=5):
-                gr.Markdown("### ⚙️ 入力 & 出力設定")
-                video_input = gr.Textbox(
-                    label="動画ファイルパス (Video Path)",
-                    placeholder=r"sample/sample_0game_1mic.mkv",
-                    value=r"sample/sample_0game_1mic.mkv",
+        # ① 入力 & 出力設定
+        with gr.Column(elem_classes=["section-block"]):
+            gr.HTML('<div class="section-title">📁 1. 入力・出力 & ファイル設定</div>')
+            video_input = gr.Textbox(
+                label="動画ファイルパス (Video Path)",
+                placeholder=r"sample/sample_0game_1mic.mkv または Google Driveのパス",
+                value=r"sample/sample_0game_1mic.mkv",
+                lines=1,
+            )
+            with gr.Row():
+                output_dir_input = gr.Textbox(
+                    label="出力先ディレクトリ (Output Directory)",
+                    value="./issues",
                     lines=1,
+                    scale=6,
                 )
-                with gr.Row():
-                    mic_track_input = gr.Number(
-                        label="マイク音声トラック番号 (0-indexed)",
-                        value=1,
-                        precision=0,
-                        info="OBSマルチトラック録画 (例: 0=ゲーム音, 1=マイク音)",
-                    )
-                    output_dir_input = gr.Textbox(
-                        label="出力先ディレクトリ",
-                        value="./issues",
-                        lines=1,
-                    )
+                file_prefix_input = gr.Textbox(
+                    label="ファイル名 Prefix",
+                    value="issue",
+                    info="例: issue, stage1",
+                    scale=4,
+                )
+                id_start_index_input = gr.Number(
+                    label="開始 ID 番号",
+                    value=1,
+                    precision=0,
+                    scale=2,
+                )
 
-                with gr.Group():
-                    with gr.Row():
-                        preview_btn = gr.Button("🎧 指定トラックの音声を試聴する (先頭30秒)", variant="secondary", size="sm")
-                    audio_preview = gr.Audio(
-                        label="音声プレビュー (再生してマイク音声か確認)",
-                        type="filepath",
-                        interactive=False,
-                    )
+        # ② マイク音声トラック & 試聴プレビュー
+        with gr.Column(elem_classes=["section-block"]):
+            gr.HTML('<div class="section-title">🎙️ 2. マイク音声トラック & 試聴確認</div>')
+            with gr.Row():
+                mic_track_input = gr.Number(
+                    label="マイク音声トラック番号 (0-indexed)",
+                    value=1,
+                    precision=0,
+                    info="OBSマルチトラック録画 (例: 0=ゲーム音, 1=マイク音)",
+                    scale=3,
+                )
+                preview_btn = gr.Button("🎧 指定トラックの音声を試聴する (先頭30秒)", variant="secondary", scale=4)
 
-                with gr.Row():
-                    file_prefix_input = gr.Textbox(
-                        label="ファイル名 Prefix (接頭辞)",
-                        value="issue",
-                        placeholder="例: stage1, bug, issue",
-                        info="出力ファイル名の接頭辞 (例: issue_001.mp4, issue_001.png)",
-                    )
-                    id_start_index_input = gr.Number(
-                        label="開始 ID 番号 (Start Index)",
-                        value=1,
-                        precision=0,
-                        info="動画分割撮影時に連番を引き継ぐための開始番号",
-                    )
+            audio_preview = gr.Audio(
+                label="音声プレビュー (再生してマイク音声か確認できます)",
+                type="filepath",
+                interactive=False,
+            )
 
-                gr.Markdown("### 🎙️ 音声検出 (Silero VAD) & マージ設定")
-                with gr.Group():
-                    vad_threshold_slider = gr.Slider(
-                        minimum=0.1,
-                        maximum=0.9,
-                        value=0.5,
-                        step=0.05,
-                        label="VAD しきい値 (vad_threshold)",
-                        info="音声を検知する感度 (値が大きいほど誤検知が減り、小さいほど小さな声も拾う)",
-                    )
-                    min_silence_slider = gr.Slider(
-                        minimum=1.0,
-                        maximum=10.0,
-                        value=2.0,
-                        step=0.5,
-                        label="無音許容時間 (min_silence_sec) [秒]",
-                        info="この秒数未満の無音であれば同一発話(Issue)として結合します",
-                    )
-                    with gr.Row():
-                        margin_pre_slider = gr.Slider(
-                            minimum=0.0,
-                            maximum=15.0,
-                            value=3.0,
-                            step=0.5,
-                            label="前マージン (margin_pre_sec) [秒]",
-                            info="発話開始前の余白時間",
-                        )
-                        margin_post_slider = gr.Slider(
-                            minimum=0.0,
-                            maximum=15.0,
-                            value=3.0,
-                            step=0.5,
-                            label="後マージン (margin_post_sec) [秒]",
-                            info="発話終了後の余白時間",
-                        )
+        # ③ 音声検出 (VAD) & マージ設定
+        with gr.Column(elem_classes=["section-block"]):
+            gr.HTML('<div class="section-title">🎛️ 3. 音声検出 (Silero VAD) & 発話マージ設定</div>')
+            with gr.Row():
+                vad_threshold_slider = gr.Slider(
+                    minimum=0.1,
+                    maximum=0.9,
+                    value=0.5,
+                    step=0.05,
+                    label="VAD しきい値 (感度)",
+                    info="値が大きいほど誤検知が減り、小さいほど小さな声も拾う",
+                )
+                min_silence_slider = gr.Slider(
+                    minimum=1.0,
+                    maximum=10.0,
+                    value=2.0,
+                    step=0.5,
+                    label="無音許容時間 [秒]",
+                    info="この秒数未満の無音は同一Issueとして結合",
+                )
+            with gr.Row():
+                margin_pre_slider = gr.Slider(
+                    minimum=0.0,
+                    maximum=15.0,
+                    value=3.0,
+                    step=0.5,
+                    label="前マージン [秒]",
+                    info="発話開始前の余白時間",
+                )
+                margin_post_slider = gr.Slider(
+                    minimum=0.0,
+                    maximum=15.0,
+                    value=3.0,
+                    step=0.5,
+                    label="後マージン [秒]",
+                    info="発話終了後の余白時間",
+                )
 
-                gr.Markdown("### 🤖 Speech to Text (Faster-Whisper)")
-                with gr.Group():
+        # ④ 文字起こし & スナップショット設定
+        with gr.Column(elem_classes=["section-block"]):
+            gr.HTML('<div class="section-title">🤖 4. 文字起こし & 静止画スナップショット設定</div>')
+            with gr.Row():
+                with gr.Column(scale=5):
                     cb_transcription = gr.Checkbox(
-                        label="Faster-Whisper で文字起こしを行う (APIキー不要・ローカル/GPU実行)",
+                        label="Faster-Whisper で文字起こしを行う (ローカル/GPU)",
                         value=True,
                     )
                     with gr.Row():
                         whisper_model_dd = gr.Dropdown(
-                            label="Whisper モデルサイズ",
+                            label="モデルサイズ",
                             choices=["tiny", "base", "small", "medium", "large-v3"],
                             value="base",
-                            info="base / small / medium 推奨",
                         )
                         whisper_lang_dd = gr.Dropdown(
-                            label="文字起こし認識言語",
+                            label="認識言語",
                             choices=[
                                 "ja (日本語)",
                                 "en (英語)",
@@ -198,13 +264,10 @@ def create_app() -> gr.Blocks:
                                 "auto (自動検出)",
                             ],
                             value="ja (日本語)",
-                            info="対象言語または自動検出を選択",
                         )
-
-                gr.Markdown("### 📸 スナップショット画像生成")
-                with gr.Group():
+                with gr.Column(scale=5):
                     cb_snapshots = gr.Checkbox(
-                        label="開始直後のスナップショット画像を自動生成する",
+                        label="開始直後のスナップショット静止画を自動生成する",
                         value=True,
                     )
                     snapshot_offset_slider = gr.Slider(
@@ -212,33 +275,39 @@ def create_app() -> gr.Blocks:
                         maximum=2.0,
                         value=0.1,
                         step=0.05,
-                        label="スナップショット抽出位置 (開始 + N秒後)",
-                        info="Issue開始タイムスタンプから何秒後のフレームを画像化するか (デフォルト: 0.1秒)",
+                        label="スナップショット位置 (開始 + N秒後)",
+                        info="デフォルト: 0.1秒後のフレーム",
                     )
 
-                gr.Markdown("### 🚦 実行制御")
-                with gr.Row():
-                    cb_steps_1_to_3 = gr.Checkbox(
-                        label="Step 1〜3を実行 (マイク抽出・VAD・文字起こし・JSON/CSV)",
-                        value=True,
-                    )
-                    cb_step_4 = gr.Checkbox(
-                        label="Step 4を実行 (全トラック保持クリップ動画 & 静止画生成)",
-                        value=True,
-                    )
-
-                run_btn = gr.Button("🚀 処理を開始する (Run Pipeline)", variant="primary", size="lg")
-
-            with gr.Column(scale=5):
-                gr.Markdown("### 📜 実行ログ & 進捗")
-                log_output = gr.Textbox(
-                    label="実行ログ (Execution Log)",
-                    lines=26,
-                    max_lines=35,
-                    interactive=False,
-                    autoscroll=True,
+        # ⑤ 実行制御 & 開始ボタン
+        with gr.Column(elem_classes=["section-block"]):
+            gr.HTML('<div class="section-title">🚦 5. パイプライン実行</div>')
+            with gr.Row():
+                cb_steps_1_to_3 = gr.Checkbox(
+                    label="Step 1〜3を実行 (マイク抽出・VAD・文字起こし・JSON/CSV出力)",
+                    value=True,
+                )
+                cb_step_4 = gr.Checkbox(
+                    label="Step 4を実行 (全トラック保持クリップ動画 & 静止画生成)",
+                    value=True,
                 )
 
+            run_btn = gr.Button("🚀 処理を開始する (Run Pipeline)", variant="primary", elem_classes=["primary-btn"])
+
+        # ⑥ 実行ログ（ページ最下部にワイド表示）
+        with gr.Column(elem_classes=["section-block"]):
+            gr.HTML('<div class="section-title">📜 実行ログ & 進捗状況</div>')
+            log_output = gr.Textbox(
+                label="ログコンソール",
+                show_label=False,
+                lines=12,
+                max_lines=25,
+                interactive=False,
+                autoscroll=True,
+                elem_classes=["log-box"],
+            )
+
+        # イベントハンドラ
         preview_btn.click(
             fn=gradio_preview_audio,
             inputs=[video_input, mic_track_input, output_dir_input],
