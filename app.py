@@ -105,12 +105,38 @@ custom_css = """
     margin-bottom: 28px !important;
 }
 
-/* ボタン風に見える余計な囲み線を排除 */
-.clean-group {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
+/* 入力ヒント (info) を input の下に配置して視線のガタつきを防ぐ */
+.gradio-container label,
+.gradio-container .block {
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* ラベルを最上部に */
+.gradio-container label > span:first-child,
+.gradio-container label > .label-text {
+    order: 1 !important;
+    margin-bottom: 4px !important;
+}
+
+/* 入力フィールドを真ん中に配置 */
+.gradio-container label > div,
+.gradio-container label > input,
+.gradio-container label > textarea,
+.gradio-container label > select,
+.gradio-container label > .wrap {
+    order: 2 !important;
+}
+
+/* info (補足説明) を入力欄の下部に配置 */
+.gradio-container label > .info,
+.gradio-container label > span:not(:first-child):not(.label-text) {
+    order: 3 !important;
+    margin-top: 4px !important;
+    margin-bottom: 0 !important;
+    font-size: 0.78rem !important;
+    color: #64748b !important;
+    line-height: 1.3 !important;
 }
 
 /* 実行ボタンのスタイリング */
@@ -191,7 +217,7 @@ def create_app() -> gr.Blocks:
                     label="マイク音声トラック番号 (0-indexed)",
                     value=1,
                     precision=0,
-                    info="OBSマルチトラック録画 (例: 0=ゲーム音, 1=マイク音)",
+                    info="OBS録画 (0=ゲーム音, 1=マイク音)",
                     scale=3,
                 )
                 preview_btn = gr.Button("🎧 指定トラックの音声を試聴する (先頭30秒)", variant="secondary", scale=4)
@@ -212,7 +238,7 @@ def create_app() -> gr.Blocks:
                     value=0.5,
                     step=0.05,
                     label="VAD しきい値 (感度)",
-                    info="値が大きいほど誤検知が減り、小さいほど小さな声も拾う",
+                    info="大きいほど誤検知減少、小さいほど小声を検知",
                 )
                 min_silence_slider = gr.Slider(
                     minimum=1.0,
