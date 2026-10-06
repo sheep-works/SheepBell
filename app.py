@@ -596,8 +596,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     demo = create_app(initial_lang=args.lang)
-    demo.launch(
-        server_name="0.0.0.0" if args.share else args.host,
-        server_port=args.port,
-        share=args.share,
-    )
+
+    if args.share:
+        # Colab mode: suppress confusing 0.0.0.0 URL and print clean share URL only
+        _, _, share_url = demo.launch(
+            server_name="0.0.0.0",
+            server_port=args.port,
+            share=True,
+            quiet=True,
+        )
+        print("\n" + "=" * 60)
+        print("  🎉 SheepBell Web UI が起動しました！")
+        print("  以下のリンクをクリックしてブラウザで開いてください:")
+        print(f"  👉 {share_url}")
+        print("=" * 60 + "\n")
+        demo.block_thread()
+    else:
+        # Local mode
+        demo.launch(
+            server_name=args.host,
+            server_port=args.port,
+            share=False,
+        )
