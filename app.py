@@ -643,12 +643,13 @@ if __name__ == "__main__":
             server_port=args.port,
             share=True,
             quiet=True,
+            prevent_thread_lock=True,
         )
-        print("\n" + "=" * 60)
-        print(f"  🎉 SheepBell v{__version__} Web UI が起動しました！")
-        print("  以下のリンクをクリックしてブラウザで開いてください:")
-        print(f"  👉 {share_url}")
-        print("=" * 60 + "\n")
+        print("\n" + "=" * 60, flush=True)
+        print(f"  🎉 SheepBell v{__version__} Web UI が起動しました！", flush=True)
+        print("  以下のリンクをクリックしてブラウザで開いてください:", flush=True)
+        print(f"  👉 {share_url}", flush=True)
+        print("=" * 60 + "\n", flush=True)
         demo.block_thread()
     else:
         # Local mode
