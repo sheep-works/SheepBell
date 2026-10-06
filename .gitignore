@@ -26,6 +26,10 @@ issues.zip
 lqa_issues.json
 lqa_issues.csv
 
+# Allow documentation images in imgs/
+!imgs/
+!imgs/**
+
 # IDE & OS files
 .vscode/
 .idea/
