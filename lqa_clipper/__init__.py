@@ -1,5 +1,7 @@
 """Game LQA Video Clipper package."""
 
+__version__ = "1.0.0"
+
 from lqa_clipper.audio_extractor import extract_mic_audio, extract_preview_audio
 from lqa_clipper.vad_detector import detect_speech_segments
 from lqa_clipper.issue_merger import merge_and_export_issues, export_issues_to_csv
@@ -9,6 +11,7 @@ from lqa_clipper.snapshot_extractor import extract_snapshots
 from lqa_clipper.pipeline import run_pipeline
 
 __all__ = [
+    "__version__",
     "extract_mic_audio",
     "extract_preview_audio",
     "detect_speech_segments",

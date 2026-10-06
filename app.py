@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 import gradio as gr
 
+from lqa_clipper import __version__
 from lqa_clipper.pipeline import run_pipeline
 from lqa_clipper.audio_extractor import extract_preview_audio
 from lqa_clipper.i18n import get_locale, get_language_choices
@@ -273,6 +274,31 @@ custom_css = """
     border: 1px solid #1e293b !important;
     border-radius: 8px !important;
 }
+
+/* フッターバー */
+.footer-bar {
+    margin-top: 36px !important;
+    padding: 20px 0 12px 0 !important;
+    border-top: 1px solid #1e293b !important;
+    text-align: center !important;
+    font-size: 0.85rem !important;
+    color: #64748b !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 12px !important;
+}
+
+.footer-bar a {
+    color: #14b8a6 !important;
+    text-decoration: none !important;
+    transition: color 0.2s ease !important;
+}
+
+.footer-bar a:hover {
+    color: #2dd4bf !important;
+    text-decoration: underline !important;
+}
 """
 
 
@@ -291,7 +317,7 @@ def create_app(initial_lang: str = "ja") -> gr.Blocks:
         button_primary_text_color="white",
     )
 
-    with gr.Blocks(title="ゲームLQA 自動動画クリップツール", theme=theme, css=custom_css) as app:
+    with gr.Blocks(title=f"ゲームLQA 自動動画クリップツール v{__version__}", theme=theme, css=custom_css) as app:
         # 言語セレクター（右上）
         with gr.Row():
             gr.HTML('<div style="flex-grow: 1;"></div>')
@@ -485,6 +511,19 @@ def create_app(initial_lang: str = "ja") -> gr.Blocks:
                 elem_classes=["log-box"],
             )
 
+        # ⑦ フッターバー (バージョン & GitHubリンク)
+        gr.HTML(
+            f"""
+            <div class="footer-bar">
+                <span>🐑 <strong>SheepBell</strong> v{__version__}</span>
+                <span>•</span>
+                <a href="https://github.com/sheep-works/SheepBell" target="_blank" rel="noopener noreferrer">
+                    📦 GitHub Repository
+                </a>
+            </div>
+            """
+        )
+
         # 言語切り替えイベント
         lang_selector.change(
             fn=on_change_language,
@@ -606,7 +645,7 @@ if __name__ == "__main__":
             quiet=True,
         )
         print("\n" + "=" * 60)
-        print("  🎉 SheepBell Web UI が起動しました！")
+        print(f"  🎉 SheepBell v{__version__} Web UI が起動しました！")
         print("  以下のリンクをクリックしてブラウザで開いてください:")
         print(f"  👉 {share_url}")
         print("=" * 60 + "\n")
