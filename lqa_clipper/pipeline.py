@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
+from lqa_clipper.ffmpeg_utils import get_audio_stream_count
 from lqa_clipper.audio_extractor import extract_mic_audio
 from lqa_clipper.vad_detector import detect_speech_segments
 from lqa_clipper.issue_merger import merge_speech_segments, export_issues_to_csv
@@ -32,14 +33,7 @@ def run_pipeline(
     file_prefix: str = "issue",
     mix_audio: bool = True,
 ) -> Generator[str, None, Dict[str, Any]]:
-    """Pipeline orchestrator for LQA video clipping, transcription, snapshots, and JSON/CSV export.
-
-    Yields:
-        Progress/log messages in real-time.
-
-    Returns:
-        Summary dict containing status, issue list, and output file paths.
-    """
+    """Pipeline orchestrator for LQA video clipping, transcription, snapshots, and JSON/CSV export."""
     logs: List[str] = []
 
     def log(msg: str) -> str:
@@ -67,13 +61,27 @@ def run_pipeline(
         yield log(f"❌ エラー: 動画ファイルが存在しません: {video_path}")
         return {"status": "error", "message": "Video file not found", "issues": []}
 
+    stream_count = get_audio_stream_count(video_path)
+    if stream_count == 0:
+        yield log(f"❌ エラー: 音声ストリームが見つかりません: {video_path}")
+        return {"status": "error", "message": "No audio streams found", "issues": []}
+
+    actual_mic_track = mic_track_index
+    if mic_track_index >= stream_count:
+        if stream_count == 1:
+            yield log(f"ℹ️ 音声トラックが1つ（単一音声/動画）のため、トラック 0 を自動選択しました。")
+            actual_mic_track = 0
+        else:
+            yield log(f"❌ エラー: トラック番号 {mic_track_index} は存在しません。（音声トラック数は {stream_count} [0〜{stream_count-1}] です）")
+            return {"status": "error", "message": f"Audio track {mic_track_index} out of range", "issues": []}
+
     try:
         if run_steps_1_to_3:
             # Step 1: Extract mic audio
-            yield log(f"--- [Step 1/4] マイク音声抽出中 (Track: {mic_track_index}) ---")
+            yield log(f"--- [Step 1/4] マイク音声抽出中 (Track: {actual_mic_track}) ---")
             extracted_wav = extract_mic_audio(
                 video_path=video_path,
-                mic_track_index=mic_track_index,
+                mic_track_index=actual_mic_track,
                 output_wav_path=wav_path,
             )
             yield log(f"✅ Step 1 完了: {extracted_wav.name} ({extracted_wav.stat().st_size / 1024 / 1024:.2f} MB)")
@@ -136,16 +144,16 @@ def run_pipeline(
 
         if run_step_4:
             # Step 4: Video clips
-            mix_mode_str = "ゲーム音+マイク音を合成ミックス" if mix_audio else "全トラック分離保持 (-map 0)"
+            mix_mode_str = "ゲーム音+マイク音を合成ミックス" if (mix_audio and stream_count > 1) else "全トラック分離保持 (-map 0)"
             yield log(f"--- [Step 4/4] FFmpeg による高速クリップ生成中 (音声モード: {mix_mode_str}) ---")
             clip_paths = clip_video_issues(
                 video_path=video_path,
                 issues_or_json_path=issues,
                 output_dir=out_dir,
                 file_prefix=clean_prefix,
-                mix_audio=mix_audio,
+                mix_audio=mix_audio if stream_count > 1 else False,
                 game_track_index=game_track_index,
-                mic_track_index=mic_track_index,
+                mic_track_index=actual_mic_track,
             )
             yield log(f"✅ Step 4 (動画クリップ) 完了: {len(clip_paths)} 個のクリップ動画を生成 -> {out_dir}")
 
