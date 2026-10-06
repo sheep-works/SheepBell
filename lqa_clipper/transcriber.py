@@ -1,9 +1,38 @@
+import ctypes
 import os
+import sys
 import wave
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
+
+
+def _preload_cuda_libraries():
+    """Preload nvidia-cublas and nvidia-cudnn shared libraries on Linux/Colab if present."""
+    if sys.platform.startswith("linux"):
+        import site
+        site_packages = site.getsitepackages()
+        for sp in site_packages:
+            # Look for nvidia/cublas/lib and nvidia/cudnn/lib
+            cublas_dir = Path(sp) / "nvidia" / "cublas" / "lib"
+            if cublas_dir.exists():
+                for lib in cublas_dir.glob("libcublas.so*"):
+                    try:
+                        ctypes.CDLL(str(lib))
+                    except Exception:
+                        pass
+            cudnn_dir = Path(sp) / "nvidia" / "cudnn" / "lib"
+            if cudnn_dir.exists():
+                for lib in cudnn_dir.glob("libcudnn*.so*"):
+                    try:
+                        ctypes.CDLL(str(lib))
+                    except Exception:
+                        pass
+
+
+# Preload CUDA libraries at module load
+_preload_cuda_libraries()
 
 _whisper_models: Dict[str, Any] = {}
 
@@ -26,7 +55,7 @@ def _get_whisper_model(
     if key in _whisper_models:
         return _whisper_models[key]
 
-    # Try loading on desired device (e.g. CUDA)
+    # 1. Try loading on desired device (e.g. CUDA)
     try:
         model = WhisperModel(
             model_size_or_path=model_size,
@@ -36,7 +65,7 @@ def _get_whisper_model(
         _whisper_models[key] = model
         return model
     except Exception as e:
-        # If CUDA library missing (e.g. libcublas.so.12 in Colab), fallback to CPU automatically
+        # 2. If CUDA fails, fallback to CPU automatically
         if device == "cuda":
             print(f"⚠️ CUDAでのモデル読み込みに失敗しました ({e})。CPUモード (int8) に自動フォールバックします。")
             fallback_key = f"{model_size}_cpu_int8"
